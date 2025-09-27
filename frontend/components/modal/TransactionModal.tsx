@@ -11,7 +11,14 @@ import {
 } from "@/components/ui/dialog"
 import { CheckCircle, Loader2, RefreshCw } from "lucide-react"
 import { ethers } from "ethers"
-
+import { 
+  DELEGATION_CONTRACT_ABI, 
+  delegationAddress, 
+  sponsorAddress, 
+  PYTH_ETH_PRICE_FEED_ID, 
+  delegationStorage
+} from "@/lib/config"
+import AddFundsModal from "@/components/modal/AddFunds"
 
 // Types
 interface TransactionData {
@@ -93,7 +100,25 @@ export default function TransactionModal({
     provider: ethers.BrowserProvider,
     userAddress: string
   ) => {
-  
+    try {
+      const contract = new ethers.Contract(
+        delegationAddress,
+        [
+          {
+            inputs: [{ internalType: "address", name: "", type: "address" }],
+            name: "userGasAmountInUSD",
+            outputs: [{ internalType: "uint256", name: "", type: "uint256" }],
+            stateMutability: "view",
+            type: "function",
+          },
+        ],
+        provider
+      )
+      const amount: bigint = await contract.userGasAmountInUSD(userAddress)
+      setUserGasAmount(amount)
+    } catch (error) {
+      console.error("Failed to fetch gas amount:", error)
+    }
   }
 
   const checkDelegationStatus = async (
@@ -105,7 +130,9 @@ export default function TransactionModal({
       if (code === "0x") return
       if (code.startsWith("0xef0100")) {
         const delegatedAddress = "0x" + code.slice(8, 48)
-        
+        if (delegationAddress.toLowerCase() === delegatedAddress.toLowerCase()) {
+          setStep(2)
+        }
       }
     } catch (error) {
       console.error("Failed to check delegation status:", error)
@@ -137,7 +164,36 @@ export default function TransactionModal({
   const handleSetupDelegation = async () => {
     if (!signer || !provider || !address) return
     setIsProcessing(true)
-
+    try {
+      const authorization = await signer.authorize({
+        address: delegationAddress,
+        nonce: currentNonce,
+      })
+      const feeData = await provider.getFeeData()
+      const txRequest = {
+        type: 4,
+        chainId,
+        nonce: currentNonce,
+        to: null,
+        value: 0,
+        data: "0x",
+        gasLimit: 300000,
+        maxFeePerGas: feeData?.maxFeePerGas || ethers.parseUnits("20", "gwei"),
+        maxPriorityFeePerGas:
+          feeData?.maxPriorityFeePerGas || ethers.parseUnits("2", "gwei"),
+        authorizationList: [authorization],
+      }
+      const txResponse = await signer.sendTransaction(txRequest)
+      const receipt = await txResponse.wait()
+      if (receipt && receipt.status === 1) {
+        setStep(2)
+        setCurrentNonce(currentNonce + 1)
+      }
+    } catch (error) {
+      console.error("Setup delegation failed:", error)
+    } finally {
+      setIsProcessing(false)
+    }
   }
 
   // Step 2
@@ -162,17 +218,125 @@ export default function TransactionModal({
 
   // Fee Estimation
   const estimateTransactionFee = async () => {
-   
+    if (!provider) return null
+    try {
+      const gasPrice = 20_000_000 // 20 gwei
+      const gasLimit = 3000000
+      const feeWei = gasPrice * gasLimit
+      const feeEth = ethers.formatEther(BigInt(feeWei))
+
+      let ethUsd: number
+      try {
+        const response = await fetch(
+          `https://hermes.pyth.network/api/latest_price_feeds?ids[]=${PYTH_ETH_PRICE_FEED_ID}`
+        )
+        const data = await response.json()
+        const price = data?.[0]?.price?.price ?? 360000000000
+        const expo = data?.[0]?.price?.expo ?? -8
+        ethUsd = Number(price) * Math.pow(10, expo)
+      } catch {
+        ethUsd = 3600
+      }
+
+      const feeUsd = (parseFloat(feeEth) * ethUsd).toFixed(2)
+
+      return {
+        gasPrice: gasPrice.toString(),
+        gasLimit: gasLimit.toString(),
+        feeWei: feeWei.toString(),
+        feeEth,
+        feeUsd,
+      }
+    } catch (err) {
+      console.error("Fee estimation failed:", err)
+      return null
+    }
   }
 
   // Step 3
   const handleCheckFees = async () => {
+    if (!provider || !signer || !address) return
+    setIsProcessing(true)
+    try {
+      if (!estimatedFee) {
+        const feeInfo = await estimateTransactionFee()
+        setEstimatedFee(feeInfo)
 
+        const required = feeInfo ? Number(feeInfo.feeUsd) : 0
+        const available = Number(ethers.formatUnits(userGasAmount, 6))
+        if (required > 0 && available < required) {
+          setAddFundsOpen(true)
+          return
+        }
+      }
+      if (isFundsInsufficient()) {
+        setAddFundsOpen(true)
+        return
+      }
+
+      const storageContract = new ethers.Contract(
+        delegationStorage,
+        [
+          {
+            inputs: [
+              { internalType: "address", name: "user", type: "address" },
+              { internalType: "uint256", name: "usdAmount", type: "uint256" },
+            ],
+            name: "deductGas",
+            outputs: [],
+            stateMutability: "nonpayable",
+            type: "function",
+          },
+        ],
+        sponsorWallet
+      )
+
+      const usdAmount = BigInt(Math.round(Number(estimatedFee!.feeUsd) * 1e6))
+      const tx = await storageContract.deductGas(address, usdAmount)
+      await tx.wait()
+      setStep(4)
+    } catch (err) {
+      console.error("DeductGas failed:", err)
+    } finally {
+      setIsProcessing(false)
+    }
   }
 
   // Step 4
   const handleSignTransaction = async () => {
-
+    if (!provider || !sponsorWallet || !transactionData || !signature || !address || !chainId) return
+    setIsProcessing(true)
+    try {
+      const eoaContract = new ethers.Contract(address, DELEGATION_CONTRACT_ABI, provider)
+      const executeData = eoaContract.interface.encodeFunctionData(
+        "execute((bytes,address,uint256),address,uint256,bytes)",
+        [
+          { data: transactionData.data, to: transactionData.to, value: transactionData.value },
+          sponsorWallet.address,
+          currentNonce,
+          signature,
+        ]
+      )
+      const sponsorNonce = await provider.getTransactionCount(sponsorWallet.address)
+      const feeData = await provider.getFeeData()
+      const sponsoredTx = {
+        type: 2,
+        chainId,
+        nonce: sponsorNonce,
+        maxFeePerGas: feeData.maxFeePerGas || ethers.parseUnits("30", "gwei"),
+        gasLimit: 1_000_000,
+        to: address,
+        value: 0,
+        data: executeData,
+      }
+      const tx = await sponsorWallet.sendTransaction(sponsoredTx)
+      const receipt = await tx.wait()
+      if (receipt?.status === 1) setIsCompleted(true)
+    } catch (error) {
+      console.error("Sign transaction failed:", error)
+    } finally {
+      setIsProcessing(false)
+    }
   }
 
   const signMessage = async (
@@ -181,7 +345,12 @@ export default function TransactionModal({
     value: bigint,
     nonce: number
   ): Promise<string> => {
-
+    const packedData = ethers.AbiCoder.defaultAbiCoder().encode(
+      ["uint256", "address", "uint256", "bytes32", "address", "uint256"],
+      [chainId, to, value, ethers.keccak256(data), sponsorAddress, nonce]
+    )
+    const digest = ethers.keccak256(packedData)
+    return signer!.signMessage(ethers.getBytes(digest))
   }
 
   const handleCloseModal = () => {

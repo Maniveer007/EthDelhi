@@ -29,7 +29,7 @@ export function HeroSection({ onScrollToProblem }: HeroSectionProps) {
         {/* Left Text Section */}
         <div className="order-2 lg:order-1 mt-10 lg:mt-0 text-center lg:text-left lg:max-w-xl">
           <h2 className="text-4xl md:text-5xl font-bold mb-4 text-gray-800">
-            Introducing <span className="bg-gradient-to-r from-emerald-500 to-teal-500 bg-clip-text text-transparent">AMU Wallet</span>
+            Introducing <span className="bg-gradient-to-r from-emerald-500 to-teal-500 bg-clip-text text-transparent">AMU 7702</span>
           </h2>
 
           {/* Typewriter Animated Text */}

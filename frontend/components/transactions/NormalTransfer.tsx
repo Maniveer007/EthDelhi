@@ -4,6 +4,7 @@ import { useState } from "react"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Button } from "@/components/ui/button"
+import TransactionModal from "@/components/modal/TransactionModal"
 import { ethers } from "ethers"
 
 interface TransactionData {
@@ -97,6 +98,12 @@ export default function NormalTransfer() {
         Send ETH
       </Button>
 
+      {/* Transaction modal */}
+      <TransactionModal
+        open={modalOpen}
+        onOpenChange={setModalOpen}
+        transactionData={transactionData}
+      />
     </div>
   )
 }

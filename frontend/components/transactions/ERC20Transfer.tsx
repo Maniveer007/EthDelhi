@@ -4,6 +4,7 @@ import { useState, useEffect } from "react"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Button } from "@/components/ui/button"
+import TransactionModal from "@/components/modal/TransactionModal"
 import { Card } from "@/components/ui/card"
 import { ethers } from "ethers"
 
@@ -329,6 +330,12 @@ export default function ERC20Transfer() {
         Send ERC20 Token
       </Button>
 
+      {/* Transaction modal */}
+      <TransactionModal
+        open={modalOpen}
+        onOpenChange={setModalOpen}
+        transactionData={transactionData}
+      />
     </div>
   )
 }
