@@ -69,13 +69,5 @@ contract DelegationStorage is AxelarExecutable, Ownable {
         userGasAmountInUSD[user] -= USDAMOUNT;
     }
 
-    function mockIncrease(address user, uint256 amount) external {
-        userGasAmountInUSD[user] += amount;
-    }
-
-    function mockDecrease(address user, uint256 amount) external {
-        userGasAmountInUSD[user] -= amount;
-    }
-
     receive() external payable {}
 }

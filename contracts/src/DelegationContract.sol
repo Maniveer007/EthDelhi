@@ -50,11 +50,11 @@ contract DelegationContract is ReentrancyGuard {
         );
 
         address recovered = digest.toEthSignedMessageHash().recover(signature);
-        // if (recovered != address(this)) revert InvalidSigner();
+        if (recovered != address(this)) revert InvalidSigner();
 
 
         // Check contract balance
-        // if (address(this).balance < userCall.value) revert InsufficientETHBalance();
+        if (address(this).balance < userCall.value) revert InsufficientETHBalance();
 
         (bool success,) = userCall.to.call{value: userCall.value}(userCall.data);
         if (!success) revert ExternalCallFailed();
