@@ -32,7 +32,7 @@ const TOKEN_LOGOS: Record<SupportedToken, string> = {
 // --- Token addresses ---
 const TOKEN_ADDRESSES: Record<SupportedChain, { PyUSD?: string; USDC?: string }> = {
   Hedera: { USDC: "0xDBA245d44e5Fe6C5e7DA60E46A0b87DDc16EC533" }, // <-- Hedera USDC ERC20
-  "Arbitrum Sepolia": { PyUSD: "0x3cd06E24a92FbF89085f84BF9f867c253B2fbC94" },
+  "Arbitrum Sepolia": { PyUSD: "0x637A1259C6afd7E3AdF63993cA7E58BB438aB1B1" },
 }
 
 // --- Relayers ---
